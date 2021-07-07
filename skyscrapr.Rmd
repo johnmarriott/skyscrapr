@@ -1,0 +1,103 @@
+---
+title: "Combined Altitude and Height of US Skyscrapers"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(htmltab)
+library(elevatr)
+library(rAmCharts4)
+knitr::opts_chunk$set(echo=FALSE)
+knitr::opts_chunk$set(message=FALSE)
+knitr::opts_chunk$set(warning=FALSE)
+```
+
+The [List of tallest buildings in the United States](https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_the_United_States) Wikipedia article contains a table that "ranks completed and topped-out buildings in the United States that stand at least 800 feet (244 m) tall, based on standard height measurement which includes spires and architectural details, but excludes antenna masts."
+
+There are 79 buildings on this list, but two are removed here since no geocoordinates are given (the NEMA Chicago building's location is just "Chicago," and the Rainier Square Tower is just "Seattle").
+
+The [USGS Elevation Point Query Service](https://ned.usgs.gov/epqs/) provides elevations for geocoordinates in the United States.
+
+The R package [htmltab](https://cran.r-project.org/web/packages/htmltab/index.html) is used to scrape the Wikipedia table, which contains building height and geocoordinate, and the [elevatr](https://cran.r-project.org/web/packages/elevatr/vignettes/introduction_to_elevatr.html) package is used to query the USGS service for the elevations of these geocoordinates
+
+The elevation for One World Trade Center is -3.7 m according to this USGS service.  It is manually set to zero for display here.
+
+```{r}
+wikipedia_tallest_buildings_us_url <- "https://en.wikipedia.org/w/index.php?title=List_of_tallest_buildings_in_the_United_States&oldid=1031596905"
+us_skyscrapers_raw <- htmltab(doc = wikipedia_tallest_buildings_us_url, 
+                              which = 4, 
+                              rm_nodata_cols = TRUE)
+```
+
+```{r}
+us_skyscrapers <- us_skyscrapers_raw %>%
+  janitor::clean_names() %>%
+  mutate(name = gsub("[^[:alnum:] ]", "", name)) %>%
+  mutate(geocoordinates = gsub(".*/ ", "", location)) %>%
+  mutate(latitude = gsub(" .*", "", gsub("°N,*", "", geocoordinates)),
+         longitude = gsub("°W", "", gsub(".*°N ", "", geocoordinates))) %>%
+  mutate(latitude = substr(latitude, 2, length(latitude))) %>% # starts with zero-width character
+  mutate(latitude = as.numeric(latitude),
+         longitude = -as.numeric(longitude)) %>%
+  filter(!is.na(latitude)) %>%
+  mutate(location = gsub("[^a-zA-Z ].*", "", location)) %>%
+  mutate(height_ft = gsub("[^0-9]", "", gsub(" .*", "", heightft_m)),
+         height_m = as.numeric(gsub("[^0-9]", "", gsub(".*\\(", "", heightft_m)))) %>%
+  select(-heightft_m, -geocoordinates)
+```
+
+```{r}
+prj_dd <- "+init=EPSG:4326"
+elevations <- get_elev_point(us_skyscrapers %>%
+                 select(longitude, latitude),
+               prj = prj_dd, 
+               src = "epqs")
+```
+```{r}
+us_skyscrapers$elevation_m <- pmax(elevations$elevation, 0) # the first row has a negative elevation, may be true but zero it for display
+us_skyscrapers$total_height_m <- us_skyscrapers$height_m + us_skyscrapers$elevation_m
+```
+
+```{r}
+us_skyscrapers %>%
+  select(name, elevation_m, height_m, total_height_m, location, floors, year, notes) 
+```
+
+```{r}
+amStackedBarChart(
+  us_skyscrapers %>% arrange(desc(total_height_m)),
+  category = "name",
+  stacks = list(c("elevation_m", "height_m")),
+  seriesNames = list(elevation_m = "Elevation", height_m = "Height"),
+  chartTitle = "Elevation and building height, ordered by combined height",
+  xAxis = list(title = "Building",
+               labels = amAxisLabels(fontSize = 0, color = "white")),
+  yAxis = "Combined Height (m)",
+  tooltip = amTooltip("{name}\n{location}, {year}\n{floors} floors\n\nElevation: {elevation_m} m\nHeight: {height_m} m\nTotal: {total_height_m} m", 
+                      textAlign = "start",
+                      backgroundOpacity = .9),
+  height = "600px"
+)
+```
+
+```{r}
+amStackedBarChart(
+  us_skyscrapers,
+  category = "name",
+  stacks = list(c("elevation_m", "height_m")),
+  seriesNames = list(elevation_m = "Elevation", height_m = "Height"),
+  chartTitle = "Elevation and building height, ordered by building height",
+  xAxis = list(title = "Building",
+               labels = amAxisLabels(fontSize = 0, color = "white")),
+  yAxis = "Combined Height (m)",
+  tooltip = amTooltip("{name}\n{location}, {year}\n{floors} floors\n\nElevation: {elevation_m} m\nHeight: {height_m} m\nTotal: {total_height_m} m", 
+                      textAlign = "start",
+                      backgroundOpacity = .9),
+  height = "600px"
+)
+```
+
+

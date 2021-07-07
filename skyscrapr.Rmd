@@ -25,6 +25,8 @@ The R package [htmltab](https://cran.r-project.org/web/packages/htmltab/index.ht
 
 The elevation for One World Trade Center is -3.7 m according to this USGS service.  It is manually set to zero for display here.
 
+The code for this document is at https://github.com/johnmarriott/skyscrapr
+
 ```{r}
 wikipedia_tallest_buildings_us_url <- "https://en.wikipedia.org/w/index.php?title=List_of_tallest_buildings_in_the_United_States&oldid=1031596905"
 us_skyscrapers_raw <- htmltab(doc = wikipedia_tallest_buildings_us_url, 
